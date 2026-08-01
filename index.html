@@ -497,7 +497,7 @@ function renderTable(r){
     ${th('umaban','番')}${th('ability','馬名')}<th data-s="jockey" class="sticky-col3">騎手</th>${th('kyaku','脚質')}
     ${th('odds','オッズ')}${th('conf','自信')}${th('ability','単%')}${th('place','複%')}${th('fit','適合')}
     ${th('ev','EV')}
-    ${RK_DEFS.map(({k,l})=>{const _on=curSort===k;const _arr=_on?(curDir===-1?'▼':'▲'):'';return `<th data-s="${k}" style="cursor:pointer" onclick="setSortKey('${k}')">${l}${_arr?`<span style="font-size:8px;margin-left:2px">${_arr}</span>`:''}</th>`;}).join('')}
+    ${RK_DEFS.map(({k,l})=>{const _on=curSort===k;const _arr=_on?(curDir===-1?'▼':'▲'):'';const _tt=k==='training'?' title="調教評価（レース内相対ランク）"':'';return `<th data-s="${k}"${_tt} style="cursor:pointer" onclick="setSortKey('${k}')">${l}${_arr?`<span style="font-size:8px;margin-left:2px">${_arr}</span>`:''}</th>`;}).join('')}
     <th>前走</th><th>2走</th><th>3走</th><th>4走</th><th>5走</th>
   </tr>`;
 
