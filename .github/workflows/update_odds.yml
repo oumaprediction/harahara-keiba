@@ -1,0 +1,41 @@
+# ============================================================
+# update_odds.yml
+# update_odds.py を定期実行して predictions_YYYYMMDD.json の
+# オッズ/EVだけを更新するワークフロー。
+#
+# 置き場所: リポジトリ直下の .github/workflows/update_odds.yml
+# ============================================================
+name: Update Odds
+
+on:
+  schedule:
+    # JRAのレースがある土日、日本時間 9:00〜16:30の間 15分おきに実行
+    # cronはUTC基準なので9時間引く（JST 9:00-16:30 → UTC 0:00-7:30）
+    - cron: '*/15 0-7 * * 6,0'
+  workflow_dispatch:  # 手動実行もできるようにしておく
+
+jobs:
+  update-odds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 必要なライブラリをインストール
+        run: pip install requests
+
+      - name: オッズを更新
+        run: python update_odds.py
+
+      - name: 変更をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add predictions_*.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "オッズ自動更新 $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
