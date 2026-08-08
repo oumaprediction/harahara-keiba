@@ -119,8 +119,10 @@ def update_predictions_file(filepath):
             if um in odds_map:
                 new_odds = odds_map[um]
                 h['tansho_odds'] = new_odds
-                # EV再計算（単勝EV = p_ability × odds / 100）
-                p_ab = h.get('p_ability', 0) or 0
+                # EV再計算（単勝EV = p_win × odds / 100）
+                # ※ 旧フィールド名'p_ability'を参照していたため常に0扱いになり、
+                #   EV/乖離/妙味スコアが更新されないバグがあった（tansho_oddsだけは更新されていた）
+                p_ab = h.get('p_win', 0) or 0
                 if p_ab > 0 and new_odds > 0:
                     h['ev_tansho'] = round(p_ab / 100 * new_odds, 3)
                     h['ev_tansho_anomaly'] = new_odds > 50  # 50倍超は異常値フラグ
