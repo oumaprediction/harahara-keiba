@@ -80,6 +80,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
    タブの時点で気づけるようにする（馬単位のSS/S表示より優先して目立たせる） */
 .rnav-btn.senbatsu{border:1px solid var(--gold);color:var(--gold);background:rgba(245,200,66,.22);font-weight:700}
 .rnav-btn.active.senbatsu{background:var(--gold);border-color:var(--gold);color:#1a1200}
+.rnav-btn.junsenbatsu{border:1px solid var(--blue);color:var(--blue);background:rgba(74,158,255,.18);font-weight:700}
+.rnav-btn.active.junsenbatsu{background:var(--blue);border-color:var(--blue);color:#071226}
 
 ::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
@@ -457,6 +459,39 @@ function formation9(r){
   return { axis: axisH.umaban, second: secondH.map(h=>h.umaban), third: thirdH.map(h=>h.umaban) };
 }
 
+// 準厳選: 地力差10-15%（厳選=15%以上とは別の帯）×頭数13頭以下。
+// 厳選ではないレースのみに適用する。
+function isJunSenbatsu(r){
+  return !r.meets_filter && r.ability_gap!=null && r.ability_gap>=10 && r.ability_gap<15
+         && r.atama!=null && r.atama<=13;
+}
+
+// 準厳選レース用 候補A: 3連単「1着1位→2着〜5位→3着〜4位」（9点）
+// バックテストで前半157.9%/後半193.9%と安定して機能した組み合わせ。
+function junFormationA(r){
+  if(!isJunSenbatsu(r)) return null;
+  const evalPool = (r.horses||[]).filter(h=>!h.is_keshi)
+                            .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
+  const axisH = evalPool[0];
+  const secondH = evalPool.slice(1,5);   // 評価2-5位
+  const thirdH  = evalPool.slice(1,4);   // 評価2-4位
+  if(!axisH || !secondH.length || !thirdH.length) return null;
+  return { axis: axisH.umaban, second: secondH.map(h=>h.umaban), third: thirdH.map(h=>h.umaban) };
+}
+
+// 準厳選レース用 候補B: 三連複「評価1-2位軸→相手〜7位」
+// バックテストで前半107.9%/後半151.9%、的中率が前半後半で完全一致した組み合わせ。
+function junFormationB(r){
+  if(!isJunSenbatsu(r)) return null;
+  const evalPool = (r.horses||[]).filter(h=>!h.is_keshi)
+                            .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
+  if(evalPool.length<2) return null;
+  const axisUms = [evalPool[0].umaban, evalPool[1].umaban];
+  const partners = evalPool.slice(2,7).map(h=>h.umaban);   // 評価3-7位
+  if(!partners.length) return null;
+  return { axis: axisUms, partners };
+}
+
 // ─── RENDER RACE LIST ───────────────────────────────────────
 function renderSidebar(){}
 
@@ -477,8 +512,16 @@ function renderHeader(r){
     </div>` : '';
 
   const f9 = formation9(r);
+  const jfA = junFormationA(r);
+  const jfB = junFormationB(r);
   const buyHtml = f9
     ? `<div class="buy-bar yes"><b>★厳選 3連単9点</b> — 1着${f9.axis} → 2着${f9.second.join('/')} → 3着${f9.third.join('/')}</div>`
+    : (jfA && jfB)
+    ? `<div class="buy-bar yes" style="border-color:var(--blue)">
+         <b style="color:var(--blue)">☆準厳選</b><br>
+         <span style="font-size:11px">回収率重視・3連単9点: 1着${jfA.axis} → 2着${jfA.second.join('/')} → 3着${jfA.third.join('/')}</span><br>
+         <span style="font-size:11px">的中率重視・三連複: 軸${jfB.axis.join('/')} → 相手${jfB.partners.join('/')}</span>
+       </div>`
     : r.buy_flag && !r.skip
     ? `<div class="buy-bar yes"><b>◎ 買い推奨</b> — ${r.buy_reason||''}</div>`
     : r.skip
@@ -490,7 +533,7 @@ function renderHeader(r){
       <div class="rh-top">
         <div class="rh-no">${r.race_no}R</div>
         <div>
-          <div class="rh-title">${r.grade||'—'}${r.meets_filter?' <span style="font-size:10px;color:#fff;background:#c0392b;border-radius:4px;padding:1px 6px;vertical-align:middle">厳選</span>':''}${r.reference_hit_rate!=null?` <span style="font-size:10px;color:#fff;background:#2c7a4b;border-radius:4px;padding:1px 6px;vertical-align:middle" title="過去4年(2022-2025)の実測値。この地力差・頭数の条件のレースで、AI本命が1着になった割合です。今回のレースの的中を保証するものではありません">自信度 ${r.reference_hit_rate}%</span>`:''}${(r.atama>=11&&r.atama<=13)?' <span style="font-size:10px;color:#fff;background:#8a5a00;border-radius:4px;padding:1px 6px;vertical-align:middle" title="バックテストで11〜13頭立ては他の頭数帯より的中率・回収率が明確に低い結果が出ています。参考程度に留めてください">⚠ 11-13頭(苦手)</span>':''}</div>
+          <div class="rh-title">${r.grade||'—'}${r.meets_filter?' <span style="font-size:10px;color:#fff;background:#c0392b;border-radius:4px;padding:1px 6px;vertical-align:middle">厳選</span>':isJunSenbatsu(r)?' <span style="font-size:10px;color:#fff;background:#2660c4;border-radius:4px;padding:1px 6px;vertical-align:middle">準厳選</span>':''}${r.reference_hit_rate!=null?` <span style="font-size:10px;color:#fff;background:#2c7a4b;border-radius:4px;padding:1px 6px;vertical-align:middle" title="過去4年(2022-2025)の実測値。この地力差・頭数の条件のレースで、AI本命が1着になった割合です。今回のレースの的中を保証するものではありません">自信度 ${r.reference_hit_rate}%</span>`:''}${(r.atama>=11&&r.atama<=13)?' <span style="font-size:10px;color:#fff;background:#8a5a00;border-radius:4px;padding:1px 6px;vertical-align:middle" title="バックテストで11〜13頭立ては他の頭数帯より的中率・回収率が明確に低い結果が出ています。参考程度に留めてください">⚠ 11-13頭(苦手)</span>':''}</div>
           <div class="rh-meta">${r.place} ${r.surface}${r.distance}m · ${r.atama}頭 · ${r.baba||'良'} · 発走 ${r.start_time||'—'}${r.ability_gap!=null?` · 地力差${r.ability_gap}%`:''}${r.reference_hit_label?` · ${r.reference_hit_label}`:''}</div>
         </div>
       </div>
@@ -615,6 +658,29 @@ function renderRight(r){
           1着 <span style="color:var(--gold)">${f9.axis}</span>
           → 2着 <span style="color:var(--gold)">${f9.second.join(' / ')}</span>
           → 3着 <span style="color:var(--gold)">${f9.third.join(' / ')}</span>
+        </div>
+        `;
+    }
+    const jfA = junFormationA(r);
+    const jfB = junFormationB(r);
+    if(jfA && jfB){
+      $('rBets').innerHTML += `
+        <div class="sec-h" style="background:var(--blue);color:#071226">☆準厳選 買い方推奨（2案）</div>
+        <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
+          地力差10-15%帯（厳選=15%以上とは別集合）専用にバックテストした2案です。
+          前半/後半どちらもプラス圏を確認済みですが、厳選(15%以上)より母数が少ないため
+          参考程度に留めてください。
+        </div>
+        <div style="padding:6px 8px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--t1)">
+          <div style="color:var(--blue);font-size:10px;font-weight:800;margin-bottom:2px">回収率重視・3連単9点</div>
+          1着 <span style="color:var(--blue)">${jfA.axis}</span>
+          → 2着 <span style="color:var(--blue)">${jfA.second.join(' / ')}</span>
+          → 3着 <span style="color:var(--blue)">${jfA.third.join(' / ')}</span>
+        </div>
+        <div style="padding:6px 8px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--t1)">
+          <div style="color:var(--blue);font-size:10px;font-weight:800;margin-bottom:2px">的中率重視・三連複</div>
+          軸 <span style="color:var(--blue)">${jfB.axis.join(' / ')}</span>
+          → 相手 <span style="color:var(--blue)">${jfB.partners.join(' / ')}</span>
         </div>
         `;
     }
@@ -814,6 +880,7 @@ function renderVenueTabs(){
     document.getElementById('rnav-races').innerHTML = races.map(r=>{
       const buy = r.buy_flag && !r.skip;
       const cr  = (r.honmei||[])[0]?.confidence_rank;
+      const isJun = isJunSenbatsu(r);
       const rankTag = cr==='SS'
         ? `SS`
         : cr==='S'
@@ -821,10 +888,12 @@ function renderVenueTabs(){
         : buy
         ? `◎`
         : ``;
-      // レース単位で「入るべきか」の判断（厳選）を最優先で見せる。
+      // レース単位で「入るべきか」の判断（厳選・準厳選）を最優先で見せる。
       // 馬単位のSS/S/◎はその次の情報として括弧書きで添える。
       const tag = r.meets_filter
         ? `<span style="display:block;font-size:9px;font-weight:800">★厳選${rankTag?`<span style="font-size:7px;opacity:.8">(${rankTag})</span>`:''}</span>`
+        : isJun
+        ? `<span style="display:block;font-size:9px;font-weight:800">☆準厳選</span>`
         : rankTag
         ? `<span style="display:block;font-size:8px;font-weight:800;${cr==='SS'?'color:var(--purple)':cr==='S'?'color:var(--gold)':''}">${rankTag}</span>`
         : `<span style="display:block;font-size:8px;opacity:0">-</span>`;
@@ -832,9 +901,10 @@ function renderVenueTabs(){
       const isKutei = r.atama>=11 && r.atama<=13;
       const titleParts = [];
       if(r.meets_filter) titleParts.push('厳選レース：バックテストで的中率・回収率が明確に高かった条件（地力差大×少頭数）に該当');
+      if(isJun) titleParts.push('準厳選レース：地力差10-15%×少頭数。厳選ほどではないが、専用の買い方でバックテスト上プラスを確認済み');
       if(isKutei) titleParts.push('11〜13頭立て：バックテストで成績が明確に低い頭数帯です（参考情報・見た目の変化なし）');
       const btnTitle = titleParts.length ? ` title="${titleParts.join(' / ')}"` : '';
-      return `<button class="rnav-btn${buy?' buy':''}${r.meets_filter?' senbatsu':''}${activeClass}" id="rnav_${r.race_id}"
+      return `<button class="rnav-btn${buy?' buy':''}${r.meets_filter?' senbatsu':isJun?' junsenbatsu':''}${activeClass}" id="rnav_${r.race_id}"
         onclick="selectRace('${r.race_id}')"${btnTitle}>${tag}${r.race_no}R</button>`;
     }).join('');
   }
