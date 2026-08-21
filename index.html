@@ -958,7 +958,10 @@ async function refreshOdds(){
     const pairs = parseTanshoOdds(html);
     if(pairs.length < curRace.horses.filter(h=>!h.is_keshi).length * 0.5){
       console.warn('オッズ取得: 抽出できた頭数が少なすぎます。ページ構造が想定と違う可能性があります。');
-      console.warn('診断用にHTML冒頭を出力します:', html.slice(0, 3000));
+      // <table の初出箇所付近（実際のオッズ表があるはず）から診断ログを出す
+      const tblIdx = html.indexOf('<table');
+      const snippetStart = tblIdx >= 0 ? tblIdx : 0;
+      console.warn('診断用にオッズ表付近のHTMLを出力します:', html.slice(snippetStart, snippetStart + 4000));
       throw new Error(`抽出できたのは${pairs.length}頭分のみ（未検証のページ構造の可能性。Consoleに診断情報を出力しました）`);
     }
     const oddsMap = Object.fromEntries(pairs);
