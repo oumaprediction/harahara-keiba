@@ -195,10 +195,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
 /* 数値セル */
 .num-ab{font-family:var(--mono);font-weight:800;font-size:14px;color:var(--turf)}
 .num-pl{font-family:var(--mono);font-weight:800;font-size:14px;color:var(--gold)}
-.num-od,.num-ab,.num-pl,.num-ev,.num-my{font-family:var(--mono);font-weight:700;font-size:11px}
+.num-od,.num-ab,.num-pl,.num-my{font-family:var(--mono);font-weight:700;font-size:11px}
 .num-od{min-width:44px}
-.num-ev{font-family:var(--mono);font-weight:800}
-.num-ev.good{color:var(--orange)}
 .num-my{font-family:var(--mono);font-weight:800}
 .num-my.high{color:var(--purple)}
 /* AI評価バッジ */
@@ -290,8 +288,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
 .br-combo{font-family:var(--mono);font-weight:700;flex:1;font-size:12px}
 .br-hit{font-family:var(--mono);font-size:9.5px;color:var(--t3)}
 .br-od{font-family:var(--mono);font-size:9.5px;color:var(--t3)}
-.br-ev{font-family:var(--mono);font-weight:800;font-size:10.5px;color:var(--t3)}
-.br-ev.good{color:var(--orange)}
+
 .br-cr{font-size:9px;font-weight:800}
 
 /* 見送り */
@@ -421,7 +418,7 @@ function trainingVal(h){
 // ─── SORT ──────────────────────────────────────────────────
 const SORT_DEFS = [
   {k:'umaban',l:'馬番'},{k:'odds',l:'オッズ'},{k:'conf',l:'AI評価'},
-  {k:'ability',l:'AI勝率'},{k:'place',l:'AI複勝率'},{k:'ev',l:'EV'},
+  {k:'ability',l:'AI勝率'},{k:'place',l:'AI複勝率'},
   {k:'kyaku',l:'脚質'},{k:'speed',l:'速度'},{k:'agari',l:'上り'},
   {k:'blood',l:'血統'},{k:'waku',l:'枠順'},
 ];
@@ -431,7 +428,6 @@ function sortKey(h){
     ability: ()=>h.p_win??h.p_ability??-1,
     place:   ()=>h.p_place??-1,
     myomi:   ()=>h.myomi_score??-1,
-    ev:      ()=>(h.ev_tansho!=null&&!h.ev_tansho_anomaly)?h.ev_tansho:-1,
     odds:    ()=>h.tansho_odds!=null?-h.tansho_odds:-9999,
     kyaku:   ()=>-(h.kyaku_code??9),
     umaban:  ()=>-(h.umaban??99),
@@ -492,6 +488,61 @@ function junFormationB(r){
   return { axis: axisUms, partners };
 }
 
+// 頭数14-18頭（地力差15%以上）: 3連単・三連複・馬連・ワイド・馬単・単勝・複勝を
+// 徹底検証した結果、どの券種・軸選びでも安定してプラスになる型が見つからなかった帯。
+// 推奨は出さず、「参考情報＋損益分岐オッズ」だけを表示する。
+function isAtama14to18(r){
+  return !r.meets_filter && !isJunSenbatsu(r) && r.ability_gap!=null && r.ability_gap>=15
+         && r.atama!=null && r.atama>=14 && r.atama<=18;
+}
+
+// 単勝1点(1位)・複勝1点(1位)・馬単・馬連・ワイドの参考情報。
+// 単勝・複勝は的中率から損益分岐オッズ(=1÷的中率)を算出。
+// 馬単・馬連・ワイドは複数点買いで組み合わせごとのオッズが取得できないため、
+// 損益分岐は出さず、過去実績（点数・的中率・回収率）だけを表示する。
+// 数値はいずれもバックテスト実績（123R、地力差15%以上×14-18頭）ベースの目安。
+function atama1418Reference(r){
+  if(!isAtama14to18(r)) return null;
+  const evalPool = (r.horses||[]).filter(h=>!h.is_keshi)
+                            .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
+  const axisH = evalPool[0];
+  if(!axisH) return null;
+  const TANSHO_HIT = 0.325, FUKUSHO_HIT = 0.699;
+  const byRank = i => evalPool[i-1];
+
+  // 馬単「1着2位→2着1,3,4,5位」（4点、的中率11.4%・回収率114.5%）
+  const umatanAxis = byRank(2);
+  const umatanPartners = [1,3,4,5].map(byRank).filter(Boolean);
+  const umatan = umatanAxis && umatanPartners.length
+    ? { axis: umatanAxis.umaban, partners: umatanPartners.map(h=>h.umaban),
+        hit: 0.114, ret: 1.145, pts: umatanPartners.length }
+    : null;
+
+  // ワイド「2位軸→1,3位」（2点、的中率35.0%・回収率93.5%）
+  const wideAxis = byRank(2);
+  const widePartners = [1,3].map(byRank).filter(Boolean);
+  const wide = wideAxis && widePartners.length
+    ? { axis: wideAxis.umaban, partners: widePartners.map(h=>h.umaban),
+        hit: 0.350, ret: 0.935, pts: widePartners.length }
+    : null;
+
+  // 馬連「2位軸→1,3,4,5位」（4点、的中率22.0%・回収率95.7%、100%未達）
+  const umarenAxis = byRank(2);
+  const umarenPartners = [1,3,4,5].map(byRank).filter(Boolean);
+  const umaren = umarenAxis && umarenPartners.length
+    ? { axis: umarenAxis.umaban, partners: umarenPartners.map(h=>h.umaban),
+        hit: 0.220, ret: 0.957, pts: umarenPartners.length }
+    : null;
+
+  return {
+    umaban: axisH.umaban,
+    tanshoHit: TANSHO_HIT, tanshoBreakeven: 1/TANSHO_HIT,
+    fukushoHit: FUKUSHO_HIT, fukushoBreakeven: 1/FUKUSHO_HIT,
+    tanshoOdds: axisH.tansho_odds ?? null,
+    umatan, wide, umaren,
+  };
+}
+
 // ─── RENDER RACE LIST ───────────────────────────────────────
 function renderSidebar(){}
 
@@ -532,9 +583,13 @@ function renderHeader(r){
     <div class="rh">
       <div class="rh-top">
         <div class="rh-no">${r.race_no}R</div>
-        <div>
+        <div style="flex:1">
           <div class="rh-title">${r.grade||'—'}${r.meets_filter?' <span style="font-size:10px;color:#fff;background:#c0392b;border-radius:4px;padding:1px 6px;vertical-align:middle">厳選</span>':isJunSenbatsu(r)?' <span style="font-size:10px;color:#fff;background:#2660c4;border-radius:4px;padding:1px 6px;vertical-align:middle">準厳選</span>':''}${r.reference_hit_rate!=null?` <span style="font-size:10px;color:#fff;background:#2c7a4b;border-radius:4px;padding:1px 6px;vertical-align:middle" title="過去4年(2022-2025)の実測値。この地力差・頭数の条件のレースで、AI本命が1着になった割合です。今回のレースの的中を保証するものではありません">自信度 ${r.reference_hit_rate}%</span>`:''}${(r.atama>=11&&r.atama<=13)?' <span style="font-size:10px;color:#fff;background:#8a5a00;border-radius:4px;padding:1px 6px;vertical-align:middle" title="バックテストで11〜13頭立ては他の頭数帯より的中率・回収率が明確に低い結果が出ています。参考程度に留めてください">⚠ 11-13頭(苦手)</span>':''}</div>
           <div class="rh-meta">${r.place} ${r.surface}${r.distance}m · ${r.atama}頭 · ${r.baba||'良'} · 発走 ${r.start_time||'—'}${r.ability_gap!=null?` · 地力差${r.ability_gap}%`:''}${r.reference_hit_label?` · ${r.reference_hit_label}`:''}</div>
+        </div>
+        <div style="text-align:right">
+          <button id="oddsRefreshBtn" onclick="refreshOdds()" style="background:var(--card);border:1px solid var(--border2);color:var(--t2);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">🔄 オッズ更新</button>
+          <div id="oddsRefreshStatus" style="font-size:9px;color:var(--t4);margin-top:3px"></div>
         </div>
       </div>
       ${verdictHtml}${buyHtml}
@@ -560,20 +615,13 @@ function renderTable(r){
   $('hthead').innerHTML = `<tr>
     ${th('umaban','番')}${th('ability','馬名')}<th data-s="jockey" class="sticky-col3">騎手</th>${th('kyaku','脚質')}
     ${th('odds','オッズ')}${th('conf','AI評価')}${th('ability','単%')}${th('place','複%')}${th('fit','適合')}
-    ${th('ev','EV')}
     ${RK_DEFS.map(({k,l})=>{const _on=curSort===k;const _arr=_on?(curDir===-1?'▼':'▲'):'';const _tt=k==='training'?' title="調教評価（レース内相対ランク）"':'';return `<th data-s="${k}"${_tt} style="cursor:pointer" onclick="setSortKey('${k}')">${l}${_arr?`<span style="font-size:8px;margin-left:2px">${_arr}</span>`:''}</th>`;}).join('')}
     <th>前走</th><th>2走</th><th>3走</th><th>4走</th><th>5走</th>
   </tr>`;
 
   $('htbody').innerHTML = horses.map(h => {
     const kc = h.kyaku_code??2;
-    const evGood = h.ev_tansho!=null&&h.ev_tansho>=1.05&&!h.ev_tansho_anomaly;
     const myHigh = (h.myomi_score||0) >= 0.3;
-    const div = h.divergence!=null
-      ? (h.divergence>0
-          ? `<span style="color:var(--turf);font-size:9px">+${(h.divergence*100).toFixed(0)}</span>`
-          : `<span style="color:var(--t3);font-size:9px">${(h.divergence*100).toFixed(0)}</span>`)
-      : '';
     const pr = (h.past_races||[]).slice(0,5);
 
     // 消し理由タグ
@@ -599,7 +647,6 @@ function renderTable(r){
       <td class="num-ab">${pct(h.p_win??h.p_ability)}<br><span style="font-size:9px;color:var(--t3)">地${pct(h.ability_score)}×条${pct(h.condition_score)}</span></td>
       <td class="num-pl">${pct(h.p_place)}</td>
       <td style="font-family:var(--mono);font-weight:800;font-size:11px;color:${(h.fit_score||0)>=30?'var(--orange)':(h.fit_score||0)>=15?'var(--t2)':'var(--t4)'}">${h.fit_score??'—'}</td>
-      <td class="num-ev ${evGood?'good':''}">${h.ev_tansho!=null&&!h.ev_tansho_anomaly?Number(h.ev_tansho).toFixed(2):'—'}<br>${div}</td>
       ${RK_DEFS.map(({k})=>{const rv=rks[h.umaban]?.[k]; const c={'S':'var(--turf)','A':'var(--gold)','B':'var(--blue)','C':'var(--t3)','D':'var(--t4)'}[rv]||'var(--t4)'; return `<td style="font-family:var(--mono);font-weight:800;font-size:11px;color:${c}">${rv||'—'}</td>`;}).join('')}
       ${pastCell(pr[0])}${pastCell(pr[1])}${pastCell(pr[2])}${pastCell(pr[3])}${pastCell(pr[4])}
     </tr>`;
@@ -684,6 +731,35 @@ function renderRight(r){
         </div>
         `;
     }
+
+    const ref1418 = atama1418Reference(r);
+    if(ref1418){
+      const oddsNote = ref1418.tanshoOdds!=null
+        ? `<div style="font-size:10px;color:${ref1418.tanshoOdds>=ref1418.tanshoBreakeven?'var(--turf)':'var(--red)'};padding:2px 8px 4px">
+             現在の単勝オッズ ${ref1418.tanshoOdds.toFixed(1)}倍 →
+             損益分岐(${ref1418.tanshoBreakeven.toFixed(2)}倍)を${ref1418.tanshoOdds>=ref1418.tanshoBreakeven?'上回っています':'下回っています'}
+           </div>`
+        : '';
+      $('rBets').innerHTML += `
+        <div class="sec-h" style="background:#3a3f4a;color:var(--t2)">頭数14-18頭：参考情報（非推奨）</div>
+        <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
+          この頭数帯は3連単・三連複・馬単・馬連・ワイド・単勝・複勝など主要な券種・軸選びを
+          徹底検証しましたが、安定してプラスになる型が見つかりませんでした。
+          このため<b style="color:var(--t2)">推奨はしません</b>。参考として、過去実績の
+          点数・的中率・回収率だけ表示します。馬単・馬連・ワイドは組み合わせごとの実オッズが
+          取得できないため、損益分岐は出していません。回収率が100%未満のもの（馬連）も
+          含めて、そのまま実績として出しています。
+        </div>
+        <div style="padding:4px 8px;font-family:var(--mono);font-size:11.5px;color:var(--t2);line-height:1.7">
+          単勝1点(${ref1418.umaban}番): 的中率${(ref1418.tanshoHit*100).toFixed(1)}% / 損益分岐 <b>${ref1418.tanshoBreakeven.toFixed(2)}倍</b><br>
+          複勝1点(${ref1418.umaban}番): 的中率${(ref1418.fukushoHit*100).toFixed(1)}% / 損益分岐 <b>${ref1418.fukushoBreakeven.toFixed(2)}倍</b>
+          ${ref1418.umatan ? `<br>馬単(${ref1418.umatan.pts}点): 1着${ref1418.umatan.axis} → 2着${ref1418.umatan.partners.join('/')} / 的中率${(ref1418.umatan.hit*100).toFixed(1)}% / 回収率${(ref1418.umatan.ret*100).toFixed(1)}%` : ''}
+          ${ref1418.wide ? `<br>ワイド(${ref1418.wide.pts}点): 軸${ref1418.wide.axis} → 相手${ref1418.wide.partners.join('/')} / 的中率${(ref1418.wide.hit*100).toFixed(1)}% / 回収率${(ref1418.wide.ret*100).toFixed(1)}%` : ''}
+          ${ref1418.umaren ? `<br>馬連(${ref1418.umaren.pts}点): 軸${ref1418.umaren.axis} → 相手${ref1418.umaren.partners.join('/')} / 的中率${(ref1418.umaren.hit*100).toFixed(1)}% / 回収率${(ref1418.umaren.ret*100).toFixed(1)}%<span style="color:var(--red)">(100%未達)</span>` : ''}
+        </div>
+        ${oddsNote}
+        `;
+    }
   } catch(e) {
     $('rBets').innerHTML += `<div style="color:#e05a5a;font-size:10px;padding:4px 8px">推奨馬券の描画でエラー: ${e.message}</div>`;
   }
@@ -697,7 +773,6 @@ function renderRight(r){
       <div class="sec-h ${isBuy?'green':'gold'}">${isBuy?'◎ 本命候補':'参考：本命候補'}</div>
       ${honmei.map((h,i)=>{
         const kc = [h.kyaku_label||'—'].map(l=>l==='逃げ'?0:l==='先行'?1:l==='中団'?2:3)[0];
-        const evGood = h.ev_tansho!=null&&h.ev_tansho>=1.05;
         const myHigh = (h.myomi_score||0)>=0.3;
         const cardCls = myHigh?'hm-card myomi':(i===0&&isBuy?'hm-card top':'hm-card');
         return `<div class="${cardCls}">
@@ -717,9 +792,6 @@ function renderRight(r){
           ${h.market_divergence_label?`<div class="hm-breakdown" style="font-size:9.5px;color:var(--t3)">${h.market_divergence_pct!=null?(h.market_divergence_pct>0?'+':'')+h.market_divergence_pct+'pt · ':''}${h.market_divergence_label}</div>`:''}
           ${h.reason?`<div class="hm-reason">${h.reason}</div>`:''}
           <div class="hm-stats">
-            <div class="hm-stat ${evGood?'good':''}">
-              <div class="sk">EV</div><div class="sv">${h.ev_tansho!=null?Number(h.ev_tansho).toFixed(2):'—'}</div>
-            </div>
             <div class="hm-stat ${(h.fit_score||0)>=30?'good':''}">
               <div class="sk">展開適合</div><div class="sv">${h.fit_score??'—'}</div>
             </div>
@@ -769,13 +841,11 @@ function renderRight(r){
       <div class="sec-h orange">◎ 買い目</div>
       ${order.filter(t=>byType[t]).map(t=>{
         const rows = byType[t].slice(0,5).map(rec=>{
-          const eg = rec.ev!=null&&rec.ev>=1.05;
           const sep = (t.startsWith('三連')||t==='馬連'||t==='ワイド')?'-':'';
           return `<div class="br ${rec.recommended?'rec':''}">
             <span class="br-combo">${rec.combination.join(sep)}</span>
             <span class="br-hit">${rec.hit_rate}%</span>
             ${rec.odds!=null?`<span class="br-od">${Number(rec.odds).toFixed(1)}倍</span>`:''}
-            <span class="br-ev ${eg?'good':''}">${rec.ev!=null?'EV'+Number(rec.ev).toFixed(2):'—'}</span>
             ${rec.confidence_rank?`<span class="br-cr" style="color:var(${rec.confidence_rank==='SS'?'--purple':rec.confidence_rank==='S'?'--gold':rec.confidence_rank==='A'?'--turf':'--t3'})">${rec.confidence_rank}</span>`:''}
           </div>`;
         }).join('');
@@ -816,6 +886,84 @@ function renderRight(r){
       <div class="empty"><div class="ei">—</div><p>見送り推奨<br><span style="font-size:10px;color:var(--t4)">${r.buy_reason||''}</span></p></div>`;
   } else if(r.skip){
     $('rBets').innerHTML += `<div class="sec-h orange" style="opacity:.4">買い目</div><div class="empty"><div class="ei">⚠</div><p>見送りレース</p></div>`;
+  }
+}
+
+// ─── ODDS REFRESH（当日オッズの手動再取得） ─────────────────
+// 静的サイト(GitHub Pages)からブラウザで直接netkeibaへアクセスすると
+// CORS制限に引っかかるため、CORSプロキシを経由する。プロキシは無料の
+// 公開サービスのため、いつ止まってもおかしくない。動かなくなったら
+// Consoleのエラーメッセージで教えてほしい。
+const NKB_PLACE_CODE = {'札幌':'01','函館':'02','福島':'03','新潟':'04','東京':'05',
+  '中山':'06','中京':'07','京都':'08','阪神':'09','小倉':'10'};
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+async function fetchViaProxy(url){
+  const resp = await fetch(CORS_PROXY + encodeURIComponent(url));
+  if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return await resp.text();
+}
+
+async function findNetkeibaRaceId(dateStr, place, raceNo){
+  const pcode = NKB_PLACE_CODE[place];
+  if(!pcode) throw new Error(`未対応の競馬場: ${place}`);
+  const html = await fetchViaProxy(`https://race.netkeiba.com/top/race_list_sub.html?kaisai_date=${dateStr}`);
+  const ids = [...new Set([...html.matchAll(/race_id=(\d{12})/g)].map(m=>m[1]))];
+  const rnoStr = String(raceNo).padStart(2,'0');
+  const found = ids.find(id => id.slice(4,6)===pcode && id.slice(10,12)===rnoStr);
+  if(!found) throw new Error('該当レースIDが見つかりません（開催日・競馬場の組み合わせを確認してください）');
+  return found;
+}
+
+function parseTanshoOdds(html){
+  // オッズページのマークアップは未検証。複数パターンを試し、
+  // 拾えた数が少なすぎる場合は診断用に生HTMLの一部を残す。
+  const pairs = [];
+  const rows = [...html.matchAll(/<tr[^>]*>[\s\S]*?<\/tr>/g)].map(m=>m[0]);
+  for(const row of rows){
+    const umM = row.match(/Umaban[^>]*>\s*<span>(\d+)<\/span>|<td[^>]*Umaban[^>]*>(\d+)</);
+    const oddsM = row.match(/Odds[^>]*>\s*([\d.]+)\s*<|class="Popular_Ninki"[\s\S]*?([\d.]+)倍/);
+    const um = umM ? parseInt(umM[1]||umM[2]) : null;
+    const od = oddsM ? parseFloat(oddsM[1]||oddsM[2]) : null;
+    if(um && od) pairs.push([um, od]);
+  }
+  return pairs;
+}
+
+async function refreshOdds(){
+  if(!curRace) return;
+  const btn = $('oddsRefreshBtn');
+  const status = $('oddsRefreshStatus');
+  btn.disabled = true;
+  btn.textContent = '取得中...';
+  status.textContent = '';
+  status.style.color = 'var(--t4)';
+  try {
+    const nkId = await findNetkeibaRaceId(DATA.date, curRace.place, curRace.race_no);
+    const html = await fetchViaProxy(`https://race.netkeiba.com/odds/index.html?race_id=${nkId}&type=b1`);
+    const pairs = parseTanshoOdds(html);
+    if(pairs.length < curRace.horses.filter(h=>!h.is_keshi).length * 0.5){
+      console.warn('オッズ取得: 抽出できた頭数が少なすぎます。ページ構造が想定と違う可能性があります。');
+      console.warn('診断用にHTML冒頭を出力します:', html.slice(0, 3000));
+      throw new Error(`抽出できたのは${pairs.length}頭分のみ（未検証のページ構造の可能性。Consoleに診断情報を出力しました）`);
+    }
+    const oddsMap = Object.fromEntries(pairs);
+    curRace.horses.forEach(h => { if(oddsMap[h.umaban]!=null) h.tansho_odds = oddsMap[h.umaban]; });
+
+    renderHeader(curRace);
+    renderTable(curRace);
+    renderRight(curRace);
+
+    const now = new Date();
+    status.textContent = `✓ ${pairs.length}頭分を更新（${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}）`;
+    status.style.color = 'var(--turf)';
+  } catch(e) {
+    console.error('オッズ更新エラー:', e);
+    status.textContent = `✗ 取得失敗: ${e.message}`;
+    status.style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 オッズ更新';
   }
 }
 
