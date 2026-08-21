@@ -78,7 +78,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
 .rnav-btn.active.buy{background:var(--turf);color:#000}
 /* 厳選(meets_filter)レース: バックテストで的中率・回収率が明確に優位だったレースを
    タブの時点で気づけるようにする（馬単位のSS/S表示より優先して目立たせる） */
-.rnav-btn.senbatsu{border:2px solid var(--gold);color:var(--gold);background:rgba(245,200,66,.22);font-weight:700}
+.rnav-btn.senbatsu{border:1px solid var(--gold);color:var(--gold);background:rgba(245,200,66,.22);font-weight:700}
 .rnav-btn.active.senbatsu{background:var(--gold);border-color:var(--gold);color:#1a1200}
 
 ::-webkit-scrollbar{width:3px;height:3px}
@@ -646,6 +646,31 @@ function renderRight(r){
     $('rKeshi').innerHTML=`<div class="sec-h red" style="opacity:.4">消し馬なし</div>`;
   }
 
+  // 買い方推奨馬券（3連単9点、厳選レースで検証済みのフォーメーション）
+  // meets_filter(厳選)ベースで判定。buy_flagとは独立して、厳選なら常に表示する。
+  $('rBets').innerHTML = '';  // 前のレースの表示が残らないよう必ず初期化
+  if(r.meets_filter){
+    const evalPool = r.horses.filter(h=>!h.is_keshi)
+                              .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
+    const axisH = evalPool[0];
+    const secondH = evalPool.slice(1,4);   // 評価2-4位
+    const thirdH  = evalPool.slice(1,5);   // 評価2-5位
+    if(axisH && secondH.length && thirdH.length){
+      $('rBets').innerHTML += `
+        <div class="sec-h" style="background:var(--gold);color:#1a1200">★厳選 買い方推奨（3連単9点）</div>
+        <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
+          バックテストで的中率・回収率が高かった「1着固定→2着3頭→3着4頭」の9点フォーメーションです。
+          1点100円なら合計900円。過去実績ベースの目安であり、回収率を保証するものではありません。
+        </div>
+        <div style="padding:6px 8px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1)">
+          1着 <span style="color:var(--gold)">${axisH.umaban}</span>
+          → 2着 <span style="color:var(--gold)">${secondH.map(h=>h.umaban).join(' / ')}</span>
+          → 3着 <span style="color:var(--gold)">${thirdH.map(h=>h.umaban).join(' / ')}</span>
+        </div>
+      `;
+    }
+  }
+
   // 買い目
   const recs = r.recommendations||[];
   if(!r.skip && recs.length && r.buy_flag){
@@ -653,6 +678,7 @@ function renderRight(r){
     recs.forEach(rec=>{(byType[rec.bet_type]=byType[rec.bet_type]||[]).push(rec);});
     const order=['単勝','複勝','馬連','ワイド','三連複','三連単'];
     $('rBets').innerHTML = `
+      ${$('rBets').innerHTML}
       <div class="sec-h orange">◎ 買い目</div>
       ${order.filter(t=>byType[t]).map(t=>{
         const rows = byType[t].slice(0,5).map(rec=>{
@@ -698,12 +724,11 @@ function renderRight(r){
     }
   } else if(!r.buy_flag && !r.skip){
     $('rBets').innerHTML = `
+      ${$('rBets').innerHTML}
       <div class="sec-h orange" style="opacity:.4">買い目</div>
       <div class="empty"><div class="ei">—</div><p>見送り推奨<br><span style="font-size:10px;color:var(--t4)">${r.buy_reason||''}</span></p></div>`;
   } else if(r.skip){
-    $('rBets').innerHTML=`<div class="sec-h orange" style="opacity:.4">買い目</div><div class="empty"><div class="ei">⚠</div><p>見送りレース</p></div>`;
-  } else {
-    $('rBets').innerHTML='';
+    $('rBets').innerHTML += `<div class="sec-h orange" style="opacity:.4">買い目</div><div class="empty"><div class="ei">⚠</div><p>見送りレース</p></div>`;
   }
 }
 
@@ -779,9 +804,9 @@ function renderVenueTabs(){
       // レース単位で「入るべきか」の判断（厳選）を最優先で見せる。
       // 馬単位のSS/S/◎はその次の情報として括弧書きで添える。
       const tag = r.meets_filter
-        ? `<span style="display:block;font-size:9px;font-weight:800;color:var(--gold)">★厳選${rankTag?`<span style="font-size:7px;opacity:.8">(${rankTag})</span>`:''}</span>`
+        ? `<span style="display:block;font-size:9px;font-weight:800">★厳選${rankTag?`<span style="font-size:7px;opacity:.8">(${rankTag})</span>`:''}</span>`
         : rankTag
-        ? `<span style="display:block;font-size:8px;font-weight:800;color:${cr==='SS'?'var(--purple)':cr==='S'?'var(--gold)':'var(--turf)'}">${rankTag}</span>`
+        ? `<span style="display:block;font-size:8px;font-weight:800;${cr==='SS'?'color:var(--purple)':cr==='S'?'color:var(--gold)':''}">${rankTag}</span>`
         : `<span style="display:block;font-size:8px;opacity:0">-</span>`;
       const activeClass = (curRace && curRace.race_id===r.race_id) ? ' active' : '';
       const isKutei = r.atama>=11 && r.atama<=13;
