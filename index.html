@@ -61,7 +61,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
 #racenav{background:var(--panel);border-bottom:1px solid var(--border2);padding:0 12px;flex-shrink:0}
 #sidebar{display:none}
 #center{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px;min-height:0}
-#right{display:block;flex-shrink:0;overflow-y:auto}
+#right{display:block}
 
 /* ─── RACE NAV ───────────────────────────────────────── */
 #racenav{padding:0 12px;display:flex;flex-direction:column;gap:0}
@@ -370,15 +370,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
   
   <div class="ht-wrap"><table class="ht"><thead id="hthead"></thead><tbody id="htbody"></tbody></table></div>
   <div id="paceDiv"></div>
-  <div class="disc">当サイトはAI予測情報です。馬券の購入は自己責任で。</div>
-</div>
 
-<!-- RIGHT -->
-<div id="right">
-  <div class="sec" id="rVerdict"></div>
-  <div class="sec" id="rHonmei"></div>
-  <div class="sec" id="rKeshi"></div>
-  <div class="sec" id="rBets"></div>
+  <!-- RIGHT（本命候補・消し馬・買い目）: 独立した領域ではなく、centerのスクロール内に含める -->
+  <div id="right">
+    <div class="sec" id="rVerdict"></div>
+    <div class="sec" id="rHonmei"></div>
+    <div class="sec" id="rKeshi"></div>
+    <div class="sec" id="rBets"></div>
+  </div>
+
+  <div class="disc">当サイトはAI予測情報です。馬券の購入は自己責任で。</div>
 </div>
 
 </div><!-- #app -->
@@ -762,7 +763,6 @@ function selectRace(rid){
   renderPace(curRace);
   renderRight(curRace);
   $('center').scrollTop=0;
-  $('right').scrollTop=0;
   saveViewState();
 }
 
