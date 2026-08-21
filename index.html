@@ -580,7 +580,39 @@ function renderRight(r){
   // 展開サマリー（右パネルでは省略、ヘッダーに集約）
   $('rVerdict').innerHTML='';
 
+  // 買い方推奨馬券（3連単9点、厳選レースで検証済みのフォーメーション）
+  // meets_filter(厳選)ベースで判定。buy_flagとは独立して、厳選なら常に表示する。
+  // ※ 関数の一番最初に置くことで、この下の本命候補・消し馬の描画で万一
+  //    例外が起きても、この表示だけは確実に出るようにしている。
+  $('rBets').innerHTML = '';  // 前のレースの表示が残らないよう必ず初期化
+  try {
+    if(r.meets_filter){
+      const evalPool = (r.horses||[]).filter(h=>!h.is_keshi)
+                                .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
+      const axisH = evalPool[0];
+      const secondH = evalPool.slice(1,4);   // 評価2-4位
+      const thirdH  = evalPool.slice(1,5);   // 評価2-5位
+      if(axisH && secondH.length && thirdH.length){
+        $('rBets').innerHTML += `
+          <div class="sec-h" style="background:var(--gold);color:#1a1200">★厳選 買い方推奨（3連単9点）</div>
+          <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
+            バックテストで的中率・回収率が高かった「1着固定→2着3頭→3着4頭」の9点フォーメーションです。
+            1点100円なら合計900円。過去実績ベースの目安であり、回収率を保証するものではありません。
+          </div>
+          <div style="padding:6px 8px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1)">
+            1着 <span style="color:var(--gold)">${axisH.umaban}</span>
+            → 2着 <span style="color:var(--gold)">${secondH.map(h=>h.umaban).join(' / ')}</span>
+            → 3着 <span style="color:var(--gold)">${thirdH.map(h=>h.umaban).join(' / ')}</span>
+          </div>
+        `;
+      }
+    }
+  } catch(e) {
+    $('rBets').innerHTML += `<div style="color:#e05a5a;font-size:10px;padding:4px 8px">推奨馬券の描画でエラー: ${e.message}</div>`;
+  }
+
   // 本命候補
+  try {
   const honmei = r.honmei||[];
   if(honmei.length){
     const isBuy = r.buy_flag && !r.skip;
@@ -645,30 +677,8 @@ function renderRight(r){
   } else {
     $('rKeshi').innerHTML=`<div class="sec-h red" style="opacity:.4">消し馬なし</div>`;
   }
-
-  // 買い方推奨馬券（3連単9点、厳選レースで検証済みのフォーメーション）
-  // meets_filter(厳選)ベースで判定。buy_flagとは独立して、厳選なら常に表示する。
-  $('rBets').innerHTML = '';  // 前のレースの表示が残らないよう必ず初期化
-  if(r.meets_filter){
-    const evalPool = r.horses.filter(h=>!h.is_keshi)
-                              .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
-    const axisH = evalPool[0];
-    const secondH = evalPool.slice(1,4);   // 評価2-4位
-    const thirdH  = evalPool.slice(1,5);   // 評価2-5位
-    if(axisH && secondH.length && thirdH.length){
-      $('rBets').innerHTML += `
-        <div class="sec-h" style="background:var(--gold);color:#1a1200">★厳選 買い方推奨（3連単9点）</div>
-        <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
-          バックテストで的中率・回収率が高かった「1着固定→2着3頭→3着4頭」の9点フォーメーションです。
-          1点100円なら合計900円。過去実績ベースの目安であり、回収率を保証するものではありません。
-        </div>
-        <div style="padding:6px 8px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1)">
-          1着 <span style="color:var(--gold)">${axisH.umaban}</span>
-          → 2着 <span style="color:var(--gold)">${secondH.map(h=>h.umaban).join(' / ')}</span>
-          → 3着 <span style="color:var(--gold)">${thirdH.map(h=>h.umaban).join(' / ')}</span>
-        </div>
-      `;
-    }
+  } catch(e) {
+    console.error('本命候補/消し馬の描画エラー:', e);
   }
 
   // 買い目
