@@ -929,17 +929,47 @@ async function findNetkeibaRaceId(dateStr, place, raceNo){
   return found;
 }
 
-function parseTanshoOdds(html){
-  // オッズページのマークアップは未検証。複数パターンを試し、
-  // 拾えた数が少なすぎる場合は診断用に生HTMLの一部を残す。
+// netkeibaのオッズAPIは、実データをdeflate圧縮+base64エンコードして
+// "data"フィールドに入れて返す(compress=1指定時)。ブラウザ標準の
+// DecompressionStreamで展開する。展開後のフォーマットは未確認なので、
+// まずはConsoleに出して人間に確認してもらう診断ステップを挟む。
+async function decodeNetkeibaOddsData(base64Data){
+  const binary = atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  // 実データで確認済み: zlibヘッダあり('deflate')形式。念のためraw版も後段で試す
+  for(const format of ['deflate', 'deflate-raw']){
+    try {
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format));
+      const text = await new Response(stream).text();
+      if(text && text.length > 0) return text;
+    } catch(e) { /* このフォーマットでは失敗、次を試す */ }
+  }
+  throw new Error('データの展開に失敗しました（deflate-raw/deflateどちらも不成立）');
+}
+
+async function fetchOddsRaw(nkId){
+  const url = `https://race.netkeiba.com/api/api_get_jra_odds.html?pid=api_get_jra_odds&input=UTF-8&output=json&race_id=${nkId}&type=1&action=init&sort=odds&compress=1`;
+  const text = await fetchViaProxy(url);
+  // JSONPラッパー（callback名(...)  の形）が付いていれば剥がす
+  const m = text.match(/^[^(]*\((.*)\)[^)]*$/s);
+  const jsonStr = m ? m[1] : text;
+  const obj = JSON.parse(jsonStr);
+  if(!obj.data) throw new Error(`オッズデータが空です（reason: ${obj.reason||'不明'}）`);
+  return await decodeNetkeibaOddsData(obj.data);
+}
+
+// 展開後は {"odds":{"1":{"01":["8.1",0,5], ...}, "2":{"01":["2.4",4.9,5], ...}}} という
+// 形式（実データで確認済み）。"1"=単勝(オッズ,0,人気)、"2"=複勝(下限,上限,人気)、
+// キーは2桁ゼロ埋めの馬番。
+function parseNetkeibaOddsJson(decodedText){
+  const obj = JSON.parse(decodedText);
+  const tansho = (obj.odds && obj.odds['1']) || {};
   const pairs = [];
-  const rows = [...html.matchAll(/<tr[^>]*>[\s\S]*?<\/tr>/g)].map(m=>m[0]);
-  for(const row of rows){
-    const umM = row.match(/Umaban[^>]*>\s*<span>(\d+)<\/span>|<td[^>]*Umaban[^>]*>(\d+)</);
-    const oddsM = row.match(/Odds[^>]*>\s*([\d.]+)\s*<|class="Popular_Ninki"[\s\S]*?([\d.]+)倍/);
-    const um = umM ? parseInt(umM[1]||umM[2]) : null;
-    const od = oddsM ? parseFloat(oddsM[1]||oddsM[2]) : null;
-    if(um && od) pairs.push([um, od]);
+  for(const [umStr, arr] of Object.entries(tansho)){
+    const um = parseInt(umStr, 10);
+    const odds = parseFloat(arr[0]);
+    if(!isNaN(um) && !isNaN(odds)) pairs.push([um, odds]);
   }
   return pairs;
 }
@@ -954,15 +984,11 @@ async function refreshOdds(){
   status.style.color = 'var(--t4)';
   try {
     const nkId = await findNetkeibaRaceId(DATA.date, curRace.place, curRace.race_no);
-    const html = await fetchViaProxy(`https://race.netkeiba.com/odds/index.html?race_id=${nkId}&type=b1`);
-    const pairs = parseTanshoOdds(html);
+    const decoded = await fetchOddsRaw(nkId);
+    const pairs = parseNetkeibaOddsJson(decoded);
     if(pairs.length < curRace.horses.filter(h=>!h.is_keshi).length * 0.5){
-      console.warn('オッズ取得: 抽出できた頭数が少なすぎます。ページ構造が想定と違う可能性があります。');
-      // <table の初出箇所付近（実際のオッズ表があるはず）から診断ログを出す
-      const tblIdx = html.indexOf('<table');
-      const snippetStart = tblIdx >= 0 ? tblIdx : 0;
-      console.warn('診断用にオッズ表付近のHTMLを出力します:', html.slice(snippetStart, snippetStart + 4000));
-      throw new Error(`抽出できたのは${pairs.length}頭分のみ（未検証のページ構造の可能性。Consoleに診断情報を出力しました）`);
+      console.warn('オッズ取得: 抽出できた頭数が少なすぎます。展開結果:', decoded.slice(0, 1000));
+      throw new Error(`抽出できたのは${pairs.length}頭分のみ（Consoleに展開結果を出力しました）`);
     }
     const oddsMap = Object.fromEntries(pairs);
     curRace.horses.forEach(h => { if(oddsMap[h.umaban]!=null) h.tansho_odds = oddsMap[h.umaban]; });
