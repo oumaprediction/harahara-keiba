@@ -213,9 +213,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
 /* 枠番カラー */
 .wb{width:22px;height:22px;border-radius:4px;display:inline-flex;align-items:center;
   justify-content:center;font-family:var(--mono);font-weight:800;font-size:11px}
-.w1{background:#f0f0f0;color:#000}.w2{background:#222;color:#fff}.w3{background:#c0392b;color:#fff}
-.w4{background:#2980b9;color:#fff}.w5{background:#f39c12;color:#000}.w6{background:#27ae60;color:#fff}
-.w7{background:#e67e22;color:#fff}.w8{background:#e91e8c;color:#fff}
+.w1{background:#f5f5f5;color:#000}.w2{background:#1a1a1a;color:#fff}.w3{background:#e2231a;color:#fff}
+.w4{background:#0068b7;color:#fff}.w5{background:#fff100;color:#000}.w6{background:#009944;color:#fff}
+.w7{background:#e97613;color:#fff}.w8{background:#f6a1c5;color:#000}
 /* 過去走セル */
 .past-cell{text-align:left;font-family:var(--mono);font-size:9px;color:var(--t3);line-height:1.35}
 .pc1{color:var(--gold);font-weight:800}.pc23{color:var(--turf);font-weight:700}
@@ -894,19 +894,20 @@ function renderRight(r){
 // CORS制限に引っかかるため、CORSプロキシを経由する。プロキシは無料の
 // 公開サービスで単体では頻繁に落ちるため、複数を順番に試して
 // 1つ目が失敗しても次を試すようにしている。全滅した場合のみエラーにする。
+// allorigins.winは実績あり（動作確認済み）のため先頭に配置。
+// thingproxy.freeboard.ioはドメイン自体が名前解決できなくなったため削除。
 const NKB_PLACE_CODE = {'札幌':'01','函館':'02','福島':'03','新潟':'04','東京':'05',
   '中山':'06','中京':'07','京都':'08','阪神':'09','小倉':'10'};
 const CORS_PROXIES = [
-  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
   url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  url => `https://thingproxy.freeboard.io/fetch/${url}`,
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
 ];
 
 async function fetchViaProxy(url){
   const errors = [];
   for(const buildProxyUrl of CORS_PROXIES){
     try {
-      const resp = await fetch(buildProxyUrl(url), { signal: AbortSignal.timeout(10000) });
+      const resp = await fetch(buildProxyUrl(url), { signal: AbortSignal.timeout(20000) });
       if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const text = await resp.text();
       if(text && text.length > 200) return text;
