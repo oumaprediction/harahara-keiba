@@ -82,6 +82,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);
 .rnav-btn.active.senbatsu{background:var(--gold);border-color:var(--gold);color:#1a1200}
 .rnav-btn.junsenbatsu{border:1px solid var(--blue);color:var(--blue);background:rgba(74,158,255,.18);font-weight:700}
 .rnav-btn.active.junsenbatsu{background:var(--blue);border-color:var(--blue);color:#071226}
+.rnav-btn.shibaana{border:1px solid var(--orange);color:var(--orange);background:rgba(255,122,64,.18);font-weight:700}
+.rnav-btn.active.shibaana{background:var(--orange);border-color:var(--orange);color:#1a0d00}
 .rnav-btn.kento{border:1px solid var(--t2);color:var(--t2);background:rgba(136,153,187,.12);font-weight:700}
 .rnav-btn.active.kento{background:var(--t2);border-color:var(--t2);color:#0a0e14}
 
@@ -473,11 +475,41 @@ function junFormationB(r){
   return { axis: axisUms, partners };
 }
 
+// ── 芝・穴狙い（馬単12点） ─────────────────────────────
+// 2122レース×3150通りの総当たり探索で見つかった、最も成績の良い組み合わせ。
+// 条件: 芝 × 14頭以上 × 1400m未満
+// 買い方: 評価3-6位の4頭から2頭を選ぶ全組み合わせ(6通り)を1-2着マルチ = 12点
+// 実績: 155R / 的中28件(18.1%) / 回収率288.3% / 前半378%・後半230% /
+//       最大1件の占有率26%（1件の大穴に依存していない）
+// 厳選(地力差15%以上×13頭以下)とは条件が重ならないため併存できる。
+function isShibaAna(r){
+  const isTurf = String(r.surface||'').startsWith('芝');
+  return isTurf && r.atama!=null && r.atama>=14
+         && r.distance!=null && r.distance<1400;
+}
+
+// 馬単「評価3-6位から2頭 → 1-2着マルチ」(12点)を計算する
+function shibaAnaFormation(r){
+  if(!isShibaAna(r)) return null;
+  const evalPool = (r.horses||[]).filter(h=>!h.is_keshi)
+                            .sort((a,b)=>(b.confidence_score||0)-(a.confidence_score||0));
+  const cand = evalPool.slice(2,6).map(h=>h.umaban);   // 評価3-6位
+  if(cand.length<2) return null;
+  const pairs = [];
+  for(let i=0;i<cand.length;i++){
+    for(let j=i+1;j<cand.length;j++){
+      pairs.push([cand[i], cand[j]]);
+    }
+  }
+  return { cand, pairs, points: pairs.length*2 };
+}
+
 // 頭数14-18頭（地力差15%以上）: 3連単・三連複・馬連・ワイド・馬単・単勝・複勝を
 // 徹底検証した結果、どの券種・軸選びでも安定してプラスになる型が見つからなかった帯。
 // 推奨は出さず、「参考情報＋損益分岐オッズ」だけを表示する。
 function isAtama14to18(r){
-  return !r.meets_filter && !isJunSenbatsu(r) && r.ability_gap!=null && r.ability_gap>=15
+  return !r.meets_filter && !isJunSenbatsu(r) && !isShibaAna(r)
+         && r.ability_gap!=null && r.ability_gap>=15
          && r.atama!=null && r.atama>=14 && r.atama<=18;
 }
 
@@ -553,6 +585,7 @@ function renderHeader(r){
   const f9 = formation9(r);
   const jfA = junFormationA(r);
   const jfB = junFormationB(r);
+  const sa = shibaAnaFormation(r);
   const ref1418 = atama1418Reference(r);
   const buyHtml = f9
     ? `<div class="buy-bar yes"><b>★厳選 3連単9点</b> — 1着${f9.axis} → 2着${f9.second.join('/')} → 3着${f9.third.join('/')}</div>`
@@ -561,6 +594,14 @@ function renderHeader(r){
          <b style="color:var(--blue)">☆準厳選</b><br>
          <span style="font-size:11px">回収率重視・3連単9点: 1着${jfA.axis} → 2着${jfA.second.join('/')} → 3着${jfA.third.join('/')}</span><br>
          <span style="font-size:11px">的中率重視・三連複: 軸${jfB.axis.join('/')} → 相手${jfB.partners.join('/')}</span>
+       </div>`
+    : sa
+    ? `<div class="buy-bar yes" style="border-color:var(--orange)">
+         <b style="color:var(--orange)">🔥芝・穴狙い 馬単${sa.points}点</b> —
+         評価3-6位(${sa.cand.join('/')})から2頭を1-2着マルチ<br>
+         <span style="font-size:10.5px;font-family:var(--mono);color:var(--t2)">
+           ${sa.pairs.map(p=>`${p[0]}⇔${p[1]}`).join(' ・ ')}
+         </span>
        </div>`
     : ref1418
     ? `<div class="buy-bar no" style="border-color:var(--t2)">
@@ -584,7 +625,7 @@ function renderHeader(r){
       <div class="rh-top">
         <div class="rh-no">${r.race_no}R</div>
         <div style="flex:1">
-          <div class="rh-title">${r.grade||'—'}${r.meets_filter?' <span style="font-size:10px;color:#fff;background:#c0392b;border-radius:4px;padding:1px 6px;vertical-align:middle">厳選</span>':isJunSenbatsu(r)?' <span style="font-size:10px;color:#fff;background:#2660c4;border-radius:4px;padding:1px 6px;vertical-align:middle">準厳選</span>':isAtama14to18(r)?' <span style="font-size:10px;color:#fff;background:#5a6478;border-radius:4px;padding:1px 6px;vertical-align:middle" title="地力差15%以上だが頭数14-18頭。徹底検証したが安定してプラスになる型が見つからず推奨はできない帯">検討</span>':''}${r.reference_hit_rate!=null?` <span style="font-size:10px;color:#fff;background:#2c7a4b;border-radius:4px;padding:1px 6px;vertical-align:middle" title="過去4年(2022-2025)の実測値。この地力差・頭数の条件のレースで、AI本命が1着になった割合です。今回のレースの的中を保証するものではありません">自信度 ${r.reference_hit_rate}%</span>`:''}${(r.atama>=11&&r.atama<=13)?' <span style="font-size:10px;color:#fff;background:#8a5a00;border-radius:4px;padding:1px 6px;vertical-align:middle" title="バックテストで11〜13頭立ては他の頭数帯より的中率・回収率が明確に低い結果が出ています。参考程度に留めてください">⚠ 11-13頭(苦手)</span>':''}</div>
+          <div class="rh-title">${r.grade||'—'}${r.meets_filter?' <span style="font-size:10px;color:#fff;background:#c0392b;border-radius:4px;padding:1px 6px;vertical-align:middle">厳選</span>':isJunSenbatsu(r)?' <span style="font-size:10px;color:#fff;background:#2660c4;border-radius:4px;padding:1px 6px;vertical-align:middle">準厳選</span>':isShibaAna(r)?' <span style="font-size:10px;color:#fff;background:#d2691e;border-radius:4px;padding:1px 6px;vertical-align:middle" title="芝×14頭以上×1400m未満。総当たり探索で最良だった馬単12点。実績 回収率288.3%・的中18.1%">🔥芝穴</span>':isAtama14to18(r)?' <span style="font-size:10px;color:#fff;background:#5a6478;border-radius:4px;padding:1px 6px;vertical-align:middle" title="地力差15%以上だが頭数14-18頭。徹底検証したが安定してプラスになる型が見つからず推奨はできない帯">検討</span>':''}${r.reference_hit_rate!=null?` <span style="font-size:10px;color:#fff;background:#2c7a4b;border-radius:4px;padding:1px 6px;vertical-align:middle" title="過去4年(2022-2025)の実測値。この地力差・頭数の条件のレースで、AI本命が1着になった割合です。今回のレースの的中を保証するものではありません">自信度 ${r.reference_hit_rate}%</span>`:''}${(r.atama>=11&&r.atama<=13)?' <span style="font-size:10px;color:#fff;background:#8a5a00;border-radius:4px;padding:1px 6px;vertical-align:middle" title="バックテストで11〜13頭立ては他の頭数帯より的中率・回収率が明確に低い結果が出ています。参考程度に留めてください">⚠ 11-13頭(苦手)</span>':''}</div>
           <div class="rh-meta">${r.place} ${r.surface}${r.distance}m · ${r.atama}頭 · ${r.baba||'良'} · 発走 ${r.start_time||'—'}${r.ability_gap!=null?` · 地力差${r.ability_gap}%`:''}${r.reference_hit_label?` · ${r.reference_hit_label}`:''}</div>
         </div>
         <div style="text-align:right">
@@ -728,6 +769,26 @@ function renderRight(r){
           <div style="color:var(--blue);font-size:10px;font-weight:800;margin-bottom:2px">的中率重視・三連複</div>
           軸 <span style="color:var(--blue)">${jfB.axis.join(' / ')}</span>
           → 相手 <span style="color:var(--blue)">${jfB.partners.join(' / ')}</span>
+        </div>
+        `;
+    }
+
+    const saSide = shibaAnaFormation(r);
+    if(saSide){
+      $('rBets').innerHTML += `
+        <div class="sec-h" style="background:var(--orange);color:#1a0d00">🔥芝・穴狙い 馬単${saSide.points}点</div>
+        <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
+          芝×14頭以上×1400m未満の条件で、2122レース×3150通りの総当たり探索から
+          見つかった最良の買い方です。評価3-6位の4頭から2頭を選ぶ全6通りを、
+          1着2着どちらでもよい形（マルチ）で買います。1点100円なら合計1,200円。<br>
+          バックテスト実績: 155R / 的中18.1% / 回収率288.3%（前半378%・後半230%）。
+          過去実績ベースの目安であり、回収率を保証するものではありません。
+        </div>
+        <div style="padding:6px 8px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--t1)">
+          <div style="color:var(--orange);font-size:10px;font-weight:800;margin-bottom:3px">
+            候補: 評価3-6位 = ${saSide.cand.join(' / ')}
+          </div>
+          ${saSide.pairs.map(p=>`<span style="display:inline-block;margin:2px 6px 2px 0;color:var(--orange)">${p[0]}⇔${p[1]}</span>`).join('')}
         </div>
         `;
     }
@@ -1074,6 +1135,7 @@ function renderVenueTabs(){
       const cr  = (r.honmei||[])[0]?.confidence_rank;
       const isJun = isJunSenbatsu(r);
       const isKento = isAtama14to18(r);
+      const isSA = isShibaAna(r);
       const CR_COLOR = {SS:'var(--purple)', S:'var(--gold)', A:'var(--turf)'};
       // タブに表示するのはSS/S/Aのみ。B以下は表示しない
       const rankTag = (cr==='SS'||cr==='S'||cr==='A') ? `${cr}馬` : ``;
@@ -1083,6 +1145,8 @@ function renderVenueTabs(){
         ? `<span style="display:block;font-size:9px;font-weight:800">★厳選${rankTag?`<span style="font-size:7px;opacity:.8">(${rankTag})</span>`:''}</span>`
         : isJun
         ? `<span style="display:block;font-size:9px;font-weight:800">☆準厳選</span>`
+        : isSA
+        ? `<span style="display:block;font-size:9px;font-weight:800">🔥芝穴</span>`
         : isKento
         ? `<span style="display:block;font-size:9px;font-weight:800">検討</span>`
         : rankTag
@@ -1093,10 +1157,11 @@ function renderVenueTabs(){
       const titleParts = [];
       if(r.meets_filter) titleParts.push('厳選レース：バックテストで的中率・回収率が明確に高かった条件（地力差大×少頭数）に該当');
       if(isJun) titleParts.push('準厳選レース：地力差10-15%×少頭数。厳選ほどではないが、専用の買い方でバックテスト上プラスを確認済み');
+      if(isSA) titleParts.push('芝・穴狙い：芝×14頭以上×1400m未満。総当たり探索で最良だった馬単12点(評価3-6位から2頭を1-2着マルチ)。実績 回収率288.3%・的中18.1%');
       if(isKento) titleParts.push('検討レース：地力差15%以上だが頭数14-18頭。徹底検証したが安定してプラスになる型が見つからず、推奨はできないが軸自体は信頼できる帯');
       if(isKutei) titleParts.push('11〜13頭立て：バックテストで成績が明確に低い頭数帯です（参考情報・見た目の変化なし）');
       const btnTitle = titleParts.length ? ` title="${titleParts.join(' / ')}"` : '';
-      return `<button class="rnav-btn${buy?' buy':''}${r.meets_filter?' senbatsu':isJun?' junsenbatsu':isKento?' kento':''}${activeClass}" id="rnav_${r.race_id}"
+      return `<button class="rnav-btn${buy?' buy':''}${r.meets_filter?' senbatsu':isJun?' junsenbatsu':isSA?' shibaana':isKento?' kento':''}${activeClass}" id="rnav_${r.race_id}"
         onclick="selectRace('${r.race_id}')"${btnTitle}>${tag}${r.race_no}R</button>`;
     }).join('');
   }
