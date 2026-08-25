@@ -539,6 +539,8 @@ function shibaAnaFormation(r){
     t3BuyPoints: t3pairs.length * (allUmaban.length - 2) * 6,
     thirdCount: allUmaban.length,
     allSorted: [...allUmaban].sort((a,b)=>a-b),  // 相手(消し馬除く全馬・昇順)
+    // 投票時に「チェックを入れない馬」を明示するための消し馬リスト
+    keshiSorted: (r.horses||[]).filter(h=>h.is_keshi).map(h=>h.umaban).sort((a,b)=>a-b),
   };
 }
 
@@ -653,7 +655,7 @@ function renderHeader(r){
              <div style="font-size:9.5px;color:var(--t3)">評価4-6位から2頭ずつ、${sa.t3pairs.length}本に分けて購入</div>
              <div style="font-size:11.5px;font-family:var(--mono);font-weight:700;color:var(--t1);margin-top:2px;line-height:1.6">
                ${sa.t3pairs.map(p=>`軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])},${Math.max(p[0],p[1])}</b>`).join('　/　')}
-               <span style="color:var(--t2);font-size:10px">（相手はいずれも残り全馬）</span>
+               <span style="color:var(--t2);font-size:10px">（相手は${sa.keshiSorted.length ? `消し馬 ${sa.keshiSorted.join(',')} を除く${sa.thirdCount}頭` : `全${sa.thirdCount}頭`}）</span>
              </div>
            </div>
          </div>
@@ -847,15 +849,24 @@ function renderRight(r){
           </div>
           <div style="font-size:9px;color:var(--t3);margin-top:2px">
             投票画面で「馬単 → ボックス」を選び、この4頭にチェックを入れるだけです。
+            ${saSide.keshiSorted.length ? `（評価順位は消し馬 ${saSide.keshiSorted.join(',')} を除いて数えています）` : ''}
           </div>
           <div style="color:var(--orange);font-size:10px;font-weight:800;margin:8px 0 3px">
             ② 3連単 2頭軸マルチ（${saSide.t3BuyPoints}点 / ${(saSide.t3BuyPoints*100).toLocaleString()}円）
           </div>
           <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);line-height:1.8">
-            ${saSide.t3pairs.map((p,i)=>`${i+1}本目: 軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])} , ${Math.max(p[0],p[1])}</b>　相手 全馬`).join('<br>')}
+            ${saSide.t3pairs.map((p,i)=>`${i+1}本目: 軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])} , ${Math.max(p[0],p[1])}</b>　相手 ${saSide.thirdCount-2}頭`).join('<br>')}
+          </div>
+          <div style="font-family:var(--mono);font-size:10.5px;color:var(--t2);margin-top:4px;line-height:1.5">
+            相手に入れる馬（軸2頭を除いてチェック）:<br>
+            <span style="color:var(--t1)">${saSide.allSorted.join(' , ')}</span>
+            ${saSide.keshiSorted.length ? `<br><span style="color:var(--red)">除外する消し馬: ${saSide.keshiSorted.join(' , ')}</span>` : ''}
           </div>
           <div style="font-size:9px;color:var(--t3);margin-top:3px">
-            「3連単 → 2頭軸マルチ」で、上記の軸2頭を選び相手は全馬にチェック。これを${saSide.t3pairs.length}本購入します。<br>
+            「3連単 → 2頭軸マルチ」で、上記の軸2頭を選び、相手は
+            ${saSide.keshiSorted.length
+              ? `<b style="color:var(--red)">消し馬（${saSide.keshiSorted.join(' , ')}）を外した</b>残り全馬`
+              : `残り全馬`}にチェック。これを${saSide.t3pairs.length}本購入します。<br>
             軸2頭と相手1頭の計3頭が、1-2-3着の<b style="color:var(--t2)">どの順序で入っても的中</b>します
             （相手馬が1着に来ても取れます）。<br>
             ※${saSide.t3pairs.length}本のうち、軸3頭がそのまま1-2-3着に入るケースだけは
