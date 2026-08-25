@@ -529,10 +529,16 @@ function shibaAnaFormation(r){
   }
   return {
     cand, pairs,
+    candSorted: [...cand].sort((a,b)=>a-b),      // BOX入力用(昇順)
     points: pairs.length*2,        // 馬単の点数(評価3-6位ボックス)
     t3cand, t3pairs,               // 3連単の軸候補(評価4-6位)とペア
-    t3Points: t3set.size,          // 3連単の点数(実測)
+    t3candSorted: [...t3cand].sort((a,b)=>a-b),  // フォーメーション入力用(昇順)
+    t3Points: t3set.size,          // 3連単の点数(重複除去後・検証上の買い目数)
+    // 実際に「2頭軸マルチ」を各ペアぶん買うと、軸3頭で決着するケースを
+    // 各本が重複して買うため、購入点数は t3Points より多くなる。
+    t3BuyPoints: t3pairs.length * (allUmaban.length - 2) * 6,
     thirdCount: allUmaban.length,
+    allSorted: [...allUmaban].sort((a,b)=>a-b),  // 相手(消し馬除く全馬・昇順)
   };
 }
 
@@ -635,18 +641,19 @@ function renderHeader(r){
              <div style="font-size:11px;font-weight:800;color:var(--orange);margin-bottom:2px">
                馬単ボックス ${sa.points}点 / ${(sa.points*100).toLocaleString()}円
              </div>
-             <div style="font-size:9.5px;color:var(--t3)">評価3-6位の4頭: ${sa.cand.join(' / ')}</div>
-             <div style="font-size:10.5px;font-family:var(--mono);color:var(--t2);margin-top:2px">
-               ${sa.pairs.map(p=>`${p[0]}⇔${p[1]}`).join(' ・ ')}
+             <div style="font-size:9.5px;color:var(--t3)">評価3-6位の4頭をBOXで</div>
+             <div style="font-size:14px;font-family:var(--mono);font-weight:800;color:var(--t1);margin-top:2px;letter-spacing:1px">
+               ${sa.candSorted.join('  ')}
              </div>
            </div>
            <div style="flex:1;min-width:260px;border:1px solid var(--border2);border-radius:5px;padding:5px 7px">
              <div style="font-size:11px;font-weight:800;color:var(--orange);margin-bottom:2px">
-               3連単 2頭軸マルチ ${sa.t3Points}点 / ${(sa.t3Points*100).toLocaleString()}円
+               3連単 2頭軸マルチ ${sa.t3BuyPoints}点 / ${(sa.t3BuyPoints*100).toLocaleString()}円
              </div>
-             <div style="font-size:9.5px;color:var(--t3)">軸候補は評価4-6位の3頭: ${sa.t3cand.join(' / ')}</div>
-             <div style="font-size:10.5px;font-family:var(--mono);color:var(--t2);margin-top:2px">
-               ${sa.t3pairs.map(p=>`${p[0]}+${p[1]}`).join(' ・ ')} × 相手${sa.thirdCount}頭
+             <div style="font-size:9.5px;color:var(--t3)">評価4-6位から2頭ずつ、${sa.t3pairs.length}本に分けて購入</div>
+             <div style="font-size:11.5px;font-family:var(--mono);font-weight:700;color:var(--t1);margin-top:2px;line-height:1.6">
+               ${sa.t3pairs.map(p=>`軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])},${Math.max(p[0],p[1])}</b>`).join('　/　')}
+               <span style="color:var(--t2);font-size:10px">（相手はいずれも残り全馬）</span>
              </div>
            </div>
          </div>
@@ -831,23 +838,35 @@ function renderRight(r){
           1-2着に入ることに賭ける、いわゆる<b style="color:var(--t2)">ボックス買い</b>です。
           荒れるレースでは1着馬の評価順位がばらけるため、1頭に決め打ちしない方が成績が良くなりました。
         </div>
-        <div style="padding:6px 8px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--t1)">
+        <div style="padding:6px 8px">
           <div style="color:var(--orange);font-size:10px;font-weight:800;margin-bottom:3px">
-            候補: 評価3-6位 = ${saSide.cand.join(' / ')}
+            ① 馬単ボックス（${saSide.points}点 / ${(saSide.points*100).toLocaleString()}円）
           </div>
-          ${saSide.pairs.map(p=>`<span style="display:inline-block;margin:2px 6px 2px 0;color:var(--orange)">${p[0]}⇔${p[1]}</span>`).join('')}
+          <div style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--t1);letter-spacing:2px">
+            ${saSide.candSorted.join('  ')}
+          </div>
+          <div style="font-size:9px;color:var(--t3);margin-top:2px">
+            投票画面で「馬単 → ボックス」を選び、この4頭にチェックを入れるだけです。
+          </div>
+          <div style="color:var(--orange);font-size:10px;font-weight:800;margin:8px 0 3px">
+            ② 3連単 2頭軸マルチ（${saSide.t3BuyPoints}点 / ${(saSide.t3BuyPoints*100).toLocaleString()}円）
+          </div>
+          <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);line-height:1.8">
+            ${saSide.t3pairs.map((p,i)=>`${i+1}本目: 軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])} , ${Math.max(p[0],p[1])}</b>　相手 全馬`).join('<br>')}
+          </div>
+          <div style="font-size:9px;color:var(--t3);margin-top:3px">
+            「3連単 → 2頭軸マルチ」で、上記の軸2頭を選び相手は全馬にチェック。これを${saSide.t3pairs.length}本購入します。<br>
+            軸2頭と相手1頭の計3頭が、1-2-3着の<b style="color:var(--t2)">どの順序で入っても的中</b>します
+            （相手馬が1着に来ても取れます）。<br>
+            ※${saSide.t3pairs.length}本のうち、軸3頭がそのまま1-2-3着に入るケースだけは
+            重複して買うことになります（${saSide.t3BuyPoints - saSide.t3Points}点分）。
+            無駄ではなく、その組み合わせに厚く賭けている状態です。
+          </div>
         </div>
         <div style="padding:4px 8px;font-size:11px;line-height:1.7;color:var(--t2)">
-          <b style="color:var(--orange)">馬単ボックス ${saSide.points}点 / ${(saSide.points*100).toLocaleString()}円</b>
-          <span style="font-size:9.5px;color:var(--t3)">（投票では「馬単ボックス」で ${saSide.cand.join(',')} の4頭を選択）</span><br>
-          <b style="color:var(--orange)">3連単 2頭軸マルチ ${saSide.t3Points}点 / ${(saSide.t3Points*100).toLocaleString()}円</b><br>
           <span style="font-size:9.5px;color:var(--t3)">
-            軸候補は<b>評価4-6位の3頭 = ${saSide.t3cand.join(' / ')}</b>（馬単の4頭とは別）。
-            この3頭から2頭を選ぶ${saSide.t3pairs.length}通り
-            （${saSide.t3pairs.map(p=>p[0]+'+'+p[1]).join(' / ')}）
-            それぞれについて「2頭軸マルチ」で買います。
-            相手は<b>消し馬を除いた${saSide.thirdCount}頭</b>（検証時もこの条件です）。
-            3頭が1-2-3着のどの順で入っても的中します。
+            馬単は<b>評価3-6位の4頭</b>、3連単は<b>評価4-6位の3頭</b>と、使う頭数が異なります。
+            相手はどちらも<b>消し馬を除いた${saSide.thirdCount}頭</b>（検証時もこの条件）。
           </span>
         </div>
         <div style="font-size:9px;color:var(--t3);padding:4px 8px;line-height:1.6;border-top:1px solid var(--border)">
