@@ -501,7 +501,16 @@ function shibaAnaFormation(r){
       pairs.push([cand[i], cand[j]]);
     }
   }
-  return { cand, pairs, points: pairs.length*2 };
+  // 3連単版: 同じペアを1-2着マルチにして、3着は出走全馬(ペアの2頭を除く)に流す。
+  // 点数 = ペア数 × 2(順序) × 3着候補数。頭数が多いほど点数も膨らむ。
+  const allUmaban = evalPool.map(h=>h.umaban);
+  const thirdCount = Math.max(allUmaban.length - 2, 0);
+  return {
+    cand, pairs,
+    points: pairs.length*2,                    // 馬単の点数
+    t3Points: pairs.length*2*thirdCount,       // 3連単の点数
+    thirdCount,
+  };
 }
 
 // 頭数14-18頭（地力差15%以上）: 3連単・三連複・馬連・ワイド・馬単・単勝・複勝を
@@ -597,11 +606,12 @@ function renderHeader(r){
        </div>`
     : sa
     ? `<div class="buy-bar yes" style="border-color:var(--orange)">
-         <b style="color:var(--orange)">🔥芝・穴狙い 馬単${sa.points}点</b> —
-         評価3-6位(${sa.cand.join('/')})から2頭を1-2着マルチ<br>
+         <b style="color:var(--orange)">🔥芝・穴狙い</b> — 評価3-6位(${sa.cand.join('/')})から2頭を1-2着マルチ<br>
+         <span style="font-size:11px;color:var(--turf)">◎本命 馬単${sa.points}点(${(sa.points*100).toLocaleString()}円)</span>
          <span style="font-size:10.5px;font-family:var(--mono);color:var(--t2)">
            ${sa.pairs.map(p=>`${p[0]}⇔${p[1]}`).join(' ・ ')}
-         </span>
+         </span><br>
+         <span style="font-size:11px;color:var(--t3)">△3連単${sa.t3Points}点(${(sa.t3Points*100).toLocaleString()}円) — 同じ2頭の1-2着マルチ×3着は全${sa.thirdCount}頭に流し</span>
        </div>`
     : ref1418
     ? `<div class="buy-bar no" style="border-color:var(--t2)">
@@ -776,19 +786,32 @@ function renderRight(r){
     const saSide = shibaAnaFormation(r);
     if(saSide){
       $('rBets').innerHTML += `
-        <div class="sec-h" style="background:var(--orange);color:#1a0d00">🔥芝・穴狙い 馬単${saSide.points}点</div>
+        <div class="sec-h" style="background:var(--orange);color:#1a0d00">🔥芝・穴狙い（芝×14頭以上×1400m未満）</div>
         <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
-          芝×14頭以上×1400m未満の条件で、2122レース×3150通りの総当たり探索から
-          見つかった最良の買い方です。評価3-6位の4頭から2頭を選ぶ全6通りを、
-          1着2着どちらでもよい形（マルチ）で買います。1点100円なら合計1,200円。<br>
-          バックテスト実績: 155R / 的中18.1% / 回収率288.3%（前半378%・後半230%）。
-          過去実績ベースの目安であり、回収率を保証するものではありません。
+          2122レース×3150通りの総当たり探索で見つかった買い方です。
+          評価3-6位の4頭から2頭を選ぶ全${saSide.pairs.length}通りを、1着2着どちらでもよい形（マルチ）で買います。
         </div>
         <div style="padding:6px 8px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--t1)">
           <div style="color:var(--orange);font-size:10px;font-weight:800;margin-bottom:3px">
             候補: 評価3-6位 = ${saSide.cand.join(' / ')}
           </div>
           ${saSide.pairs.map(p=>`<span style="display:inline-block;margin:2px 6px 2px 0;color:var(--orange)">${p[0]}⇔${p[1]}</span>`).join('')}
+        </div>
+        <div style="padding:4px 8px;font-size:11px;line-height:1.7;color:var(--t2)">
+          <b style="color:var(--turf)">◎本命 馬単 ${saSide.points}点 / ${(saSide.points*100).toLocaleString()}円</b><br>
+          <b style="color:var(--t3)">△参考 3連単 ${saSide.t3Points}点 / ${(saSide.t3Points*100).toLocaleString()}円</b>
+          <span style="font-size:9.5px;color:var(--t3)">（上記2頭を1-2着マルチ、3着は全${saSide.thirdCount}頭に流し）</span>
+        </div>
+        <div style="font-size:9px;color:var(--t3);padding:4px 8px;line-height:1.6;border-top:1px solid var(--border)">
+          <b>過去155レースの実績（2026/1-8月）</b><br>
+          馬単: 回収率288.3%・的中18.1%・収支+350,180円<br>
+          3連単: 回収率398.7%・的中16.8%・収支+7,311,440円<br>
+          <span style="color:var(--red)">
+          ※3連単の回収率は上位4件の大穴に依存しており、その4件を除くと103%（ほぼトントン）まで落ちます。
+          月別でも8月は44.2%で−179,470円と、1ヶ月で大きく沈む月があります。
+          馬単は最悪の月でも−8,570円で、下振れが小さいぶん本命向きです。
+          </span><br>
+          ※いずれも最大15連敗の実績あり。過去実績ベースの目安で、回収率を保証するものではありません。
         </div>
         `;
     }
