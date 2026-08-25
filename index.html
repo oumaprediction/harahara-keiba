@@ -501,15 +501,38 @@ function shibaAnaFormation(r){
       pairs.push([cand[i], cand[j]]);
     }
   }
-  // 3連単版: 同じペアを1-2着マルチにして、3着は出走全馬(ペアの2頭を除く)に流す。
-  // 点数 = ペア数 × 2(順序) × 3着候補数。頭数が多いほど点数も膨らむ。
+  // ── 3連単は「評価4-6位の3頭から2頭軸マルチ」──
+  // 軸2頭＋相手1頭の3頭が1-2-3着のどの順序で入っても的中する買い方。
+  // 以前は「軸2頭を1-2着に固定」する形を採用していたが、それだと
+  // 軸2頭が1着と3着に入ったケースを取りこぼしていた。マルチに変えた結果:
+  //   1-2着固定: 回収率398.7% / 1-2月を除くと186.8%
+  //   2頭軸マルチ(4-6位): 回収率380.3% / 1-2月を除いても258.3%
+  // 全期間の数字はほぼ互角だが、1-2月の大当たりへの依存度が明確に低い。
   const allUmaban = evalPool.map(h=>h.umaban);
-  const thirdCount = Math.max(allUmaban.length - 2, 0);
+  const t3cand = evalPool.slice(3,6).map(h=>h.umaban);   // 評価4-6位(3頭)
+  const t3pairs = [];
+  for(let i=0;i<t3cand.length;i++){
+    for(let j=i+1;j<t3cand.length;j++){
+      t3pairs.push([t3cand[i], t3cand[j]]);
+    }
+  }
+  // 3頭の並び順6通りをすべて買うため、実際に列挙して重複を除く
+  const t3set = new Set();
+  for(const [a,b] of t3pairs){
+    for(const p of allUmaban){
+      if(p===a || p===b) continue;
+      const trio = [a,b,p];
+      for(const x of trio) for(const y of trio) for(const z of trio){
+        if(x!==y && y!==z && x!==z) t3set.add(x+'-'+y+'-'+z);
+      }
+    }
+  }
   return {
     cand, pairs,
-    points: pairs.length*2,                    // 馬単の点数
-    t3Points: pairs.length*2*thirdCount,       // 3連単の点数
-    thirdCount,
+    points: pairs.length*2,        // 馬単の点数(評価3-6位ボックス)
+    t3cand, t3pairs,               // 3連単の軸候補(評価4-6位)とペア
+    t3Points: t3set.size,          // 3連単の点数(実測)
+    thirdCount: allUmaban.length,
   };
 }
 
@@ -606,12 +629,12 @@ function renderHeader(r){
        </div>`
     : sa
     ? `<div class="buy-bar yes" style="border-color:var(--orange)">
-         <b style="color:var(--orange)">🔥芝・穴狙い</b> — 評価3-6位(${sa.cand.join('/')})から2頭を1-2着マルチ<br>
-         <span style="font-size:11px;color:var(--turf)">◎本命 馬単${sa.points}点(${(sa.points*100).toLocaleString()}円)</span>
+         <b style="color:var(--orange)">🔥芝・穴狙い</b> — <b>軸なし</b>・評価3-6位の<b>4頭ボックス</b>: ${sa.cand.join(' / ')}<br>
+         <span style="font-size:11px;color:var(--turf)">◎本命 馬単ボックス ${sa.points}点(${(sa.points*100).toLocaleString()}円)</span>
          <span style="font-size:10.5px;font-family:var(--mono);color:var(--t2)">
            ${sa.pairs.map(p=>`${p[0]}⇔${p[1]}`).join(' ・ ')}
          </span><br>
-         <span style="font-size:11px;color:var(--t3)">△3連単${sa.t3Points}点(${(sa.t3Points*100).toLocaleString()}円) — 同じ2頭の1-2着マルチ×3着は全${sa.thirdCount}頭に流し</span>
+         <span style="font-size:11px;color:var(--t3)">△3連単 2頭軸マルチ ${sa.t3Points}点(${(sa.t3Points*100).toLocaleString()}円) — 軸は評価4-6位(${sa.t3cand.join('/')})から2頭、相手は全${sa.thirdCount}頭</span>
        </div>`
     : ref1418
     ? `<div class="buy-bar no" style="border-color:var(--t2)">
@@ -789,7 +812,9 @@ function renderRight(r){
         <div class="sec-h" style="background:var(--orange);color:#1a0d00">🔥芝・穴狙い（芝×14頭以上×1400m未満）</div>
         <div style="font-size:9.5px;color:var(--t3);padding:4px 8px;line-height:1.5">
           2122レース×3150通りの総当たり探索で見つかった買い方です。
-          評価3-6位の4頭から2頭を選ぶ全${saSide.pairs.length}通りを、1着2着どちらでもよい形（マルチ）で買います。
+          <b style="color:var(--t2)">軸は決めません。</b>評価3-6位の4頭のうち「どれか2頭」が
+          1-2着に入ることに賭ける、いわゆる<b style="color:var(--t2)">ボックス買い</b>です。
+          荒れるレースでは1着馬の評価順位がばらけるため、1頭に決め打ちしない方が成績が良くなりました。
         </div>
         <div style="padding:6px 8px;font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--t1)">
           <div style="color:var(--orange);font-size:10px;font-weight:800;margin-bottom:3px">
@@ -798,18 +823,28 @@ function renderRight(r){
           ${saSide.pairs.map(p=>`<span style="display:inline-block;margin:2px 6px 2px 0;color:var(--orange)">${p[0]}⇔${p[1]}</span>`).join('')}
         </div>
         <div style="padding:4px 8px;font-size:11px;line-height:1.7;color:var(--t2)">
-          <b style="color:var(--turf)">◎本命 馬単 ${saSide.points}点 / ${(saSide.points*100).toLocaleString()}円</b><br>
-          <b style="color:var(--t3)">△参考 3連単 ${saSide.t3Points}点 / ${(saSide.t3Points*100).toLocaleString()}円</b>
-          <span style="font-size:9.5px;color:var(--t3)">（上記2頭を1-2着マルチ、3着は全${saSide.thirdCount}頭に流し）</span>
+          <b style="color:var(--turf)">◎本命 馬単ボックス ${saSide.points}点 / ${(saSide.points*100).toLocaleString()}円</b>
+          <span style="font-size:9.5px;color:var(--t3)">（投票では「馬単ボックス」で ${saSide.cand.join(',')} の4頭を選択）</span><br>
+          <b style="color:var(--t3)">△参考 3連単 2頭軸マルチ ${saSide.t3Points}点 / ${(saSide.t3Points*100).toLocaleString()}円</b><br>
+          <span style="font-size:9.5px;color:var(--t3)">
+            軸候補は<b>評価4-6位の3頭 = ${saSide.t3cand.join(' / ')}</b>（馬単の4頭とは別）。
+            この3頭から2頭を選ぶ${saSide.t3pairs.length}通り
+            （${saSide.t3pairs.map(p=>p[0]+'+'+p[1]).join(' / ')}）
+            それぞれについて「2頭軸マルチ・相手は全${saSide.thirdCount}頭」で買います。
+            3頭が1-2-3着のどの順で入っても的中します。
+          </span>
         </div>
         <div style="font-size:9px;color:var(--t3);padding:4px 8px;line-height:1.6;border-top:1px solid var(--border)">
           <b>過去155レースの実績（2026/1-8月）</b><br>
           馬単: 回収率288.3%・的中18.1%・収支+350,180円<br>
-          3連単: 回収率398.7%・的中16.8%・収支+7,311,440円<br>
+          3連単(2頭軸マルチ): 回収率380.3%・的中16.1%・収支+9,772,730円<br>
           <span style="color:var(--red)">
-          ※3連単の回収率は上位4件の大穴に依存しており、その4件を除くと103%（ほぼトントン）まで落ちます。
-          月別でも8月は44.2%で−179,470円と、1ヶ月で大きく沈む月があります。
-          馬単は最悪の月でも−8,570円で、下振れが小さいぶん本命向きです。
+          ※1-2月に大当たりが集中しており、その2ヶ月を除いた123レースで見ると
+          馬単193.0% / 3連単258.3%まで下がります（それでも黒字は維持）。<br>
+          ※3連単は1レース2万円超のため、沈む月の傷が大きくなります。
+          実績では3月−301,200円・8月−337,920円という月がありました。
+          馬単は同じ月でも−8,570円・−5,380円と軽微です。
+          資金に余裕がなければ馬単だけでの運用を勧めます。
           </span><br>
           ※いずれも最大15連敗の実績あり。過去実績ベースの目安で、回収率を保証するものではありません。
         </div>
