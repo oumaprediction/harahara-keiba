@@ -541,6 +541,13 @@ function shibaAnaFormation(r){
     allSorted: [...allUmaban].sort((a,b)=>a-b),  // 相手(消し馬除く全馬・昇順)
     // 投票時に「チェックを入れない馬」を明示するための消し馬リスト
     keshiSorted: (r.horses||[]).filter(h=>h.is_keshi).map(h=>h.umaban).sort((a,b)=>a-b),
+    // SS馬がいるレースは3連単が壊滅的だったため、その有無を保持する。
+    // 実績(155R): SS馬あり22R → 3連単35.9%(的中1件) / SS馬なし133R → 435.0%
+    // 一方で馬単はSS馬ありでも272.5%(的中22.7%)と機能しているため、
+    // 3連単だけを抑制して馬単は従来どおり出す。
+    ssUmaban: (evalPool.find(h=>h.confidence_rank==='SS')||{}).umaban ?? null,
+    // S馬は3連単も実績202.0%で機能するため、いても通常どおり買ってよい（注記のみ）
+    sUmaban: (evalPool.find(h=>h.confidence_rank==='S')||{}).umaban ?? null,
   };
 }
 
@@ -648,12 +655,14 @@ function renderHeader(r){
                ${sa.candSorted.join('  ')}
              </div>
            </div>
-           <div style="flex:1;min-width:260px;border:1px solid var(--border2);border-radius:5px;padding:5px 7px">
-             <div style="font-size:11px;font-weight:800;color:var(--orange);margin-bottom:2px">
-               3連単 2頭軸マルチ ${sa.t3BuyPoints}点 / ${(sa.t3BuyPoints*100).toLocaleString()}円
+           <div style="flex:1;min-width:260px;border:1px solid ${sa.ssUmaban!=null?'var(--red)':'var(--border2)'};border-radius:5px;padding:5px 7px;${sa.ssUmaban!=null?'opacity:.65':''}">
+             <div style="font-size:11px;font-weight:800;color:${sa.ssUmaban!=null?'var(--red)':'var(--orange)'};margin-bottom:2px">
+               ${sa.ssUmaban!=null?`⚠ 3連単は見送り推奨（SS馬 ${sa.ssUmaban}番あり）`:`3連単 2頭軸マルチ ${sa.t3BuyPoints}点 / ${(sa.t3BuyPoints*100).toLocaleString()}円`}
              </div>
-             <div style="font-size:9.5px;color:var(--t3)">評価4-6位から2頭ずつ、${sa.t3pairs.length}本に分けて購入</div>
-             <div style="font-size:11.5px;font-family:var(--mono);font-weight:700;color:var(--t1);margin-top:2px;line-height:1.6">
+             ${sa.ssUmaban!=null?`<div style="font-size:9.5px;color:var(--t3);line-height:1.5">SS馬がいるレースの3連単は実績22Rで回収率35.9%（的中1件）。馬単は272.5%で機能するため、馬単のみを推奨します。<br>それでも買う場合: ${sa.t3BuyPoints}点 / ${(sa.t3BuyPoints*100).toLocaleString()}円</div>`:''}
+             ${(sa.sUmaban!=null&&sa.ssUmaban==null)?`<div style="font-size:9px;color:var(--t3);line-height:1.4;margin-bottom:2px">S馬(${sa.sUmaban}番)がいますが、S馬なら3連単も実績202.0%。無視して通常どおり買ってOKです。</div>`:''}
+             <div style="font-size:9.5px;color:var(--t3);${sa.ssUmaban!=null?'display:none':''}">評価4-6位から2頭ずつ、${sa.t3pairs.length}本に分けて購入</div>
+             <div style="font-size:11.5px;font-family:var(--mono);font-weight:700;color:var(--t1);margin-top:2px;line-height:1.6;${sa.ssUmaban!=null?'display:none':''}">
                ${sa.t3pairs.map(p=>`軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])},${Math.max(p[0],p[1])}</b>`).join('　/　')}
                <span style="color:var(--t2);font-size:10px">（相手は${sa.keshiSorted.length ? `消し馬 ${sa.keshiSorted.join(',')} を除く${sa.thirdCount}頭` : `全${sa.thirdCount}頭`}）</span>
              </div>
@@ -851,9 +860,21 @@ function renderRight(r){
             投票画面で「馬単 → ボックス」を選び、この4頭にチェックを入れるだけです。
             ${saSide.keshiSorted.length ? `（評価順位は消し馬 ${saSide.keshiSorted.join(',')} を除いて数えています）` : ''}
           </div>
-          <div style="color:var(--orange);font-size:10px;font-weight:800;margin:8px 0 3px">
+          <div style="color:${saSide.ssUmaban!=null?'var(--red)':'var(--orange)'};font-size:10px;font-weight:800;margin:8px 0 3px">
             ② 3連単 2頭軸マルチ（${saSide.t3BuyPoints}点 / ${(saSide.t3BuyPoints*100).toLocaleString()}円）
+            ${saSide.ssUmaban!=null?'　⚠ 見送り推奨':''}
           </div>
+          ${saSide.ssUmaban!=null?`<div style="font-size:9.5px;color:var(--red);padding:0 0 4px;line-height:1.5">
+            このレースには<b>SS馬（${saSide.ssUmaban}番）</b>がいます。実績155レースのうちSS馬がいた22レースでは、
+            3連単の回収率が<b>35.9%</b>（的中1件のみ）と壊滅的でした。SS馬がいないレースでは435.0%なので、
+            差は歴然です。<b>3連単は見送り、馬単のみ</b>にすることを勧めます。<br>
+            （馬単はSS馬がいても272.5%・的中22.7%で機能しています）
+          </div>`:''}
+          ${saSide.sUmaban!=null&&saSide.ssUmaban==null?`<div style="font-size:9.5px;color:var(--t3);padding:0 0 4px;line-height:1.5">
+            このレースには<b style="color:var(--t2)">S馬（${saSide.sUmaban}番）</b>がいますが、
+            S馬までなら3連単も実績202.0%で機能するため、
+            <b style="color:var(--t2)">無視して通常どおり買って構いません</b>。避けるべきはSS馬がいる場合のみです。
+          </div>`:''}
           <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);line-height:1.8">
             ${saSide.t3pairs.map((p,i)=>`${i+1}本目: 軸 <b style="color:var(--orange)">${Math.min(p[0],p[1])} , ${Math.max(p[0],p[1])}</b>　相手 ${saSide.thirdCount-2}頭`).join('<br>')}
           </div>
